@@ -12,6 +12,9 @@ HUB_HEIGHT = (HUB_TOP_HEIGHT + HUB_BOTTOM_HEIGHT) / 2  # Center height for hit d
 
 # Physics constants
 GRAVITY = 386.4  # inches per second squared (32.2 ft/s^2)
+AIR_DENSITY = 0.0765  # lb/ft^3 at sea level
+BALL_DIAMETER = 5.91 # inches (FRC 2026 game piece - approximate)
+BALL_MASS = 0.5  # lb (approximate)
 
 class LauncherTrajectoryTool:
     def __init__(self):
@@ -20,6 +23,10 @@ class LauncherTrajectoryTool:
         self.angle = 45      # degrees
         self.launch_height = 20  # inches 
         self.distance = 150  # inches from hub (12.5 feet)
+        self.spin_rate = 3000  # RPM (revolutions per minute)
+        
+        # Physics model selector
+        self.use_magnus = False  # False = simple projectile, True = Magnus effect
         
         # Store saved trajectories
         self.saved_trajectories = []
@@ -89,7 +96,14 @@ class LauncherTrajectoryTool:
         self.ax.add_patch(self.hub_outline)
     
     def calculate_trajectory(self, velocity, angle_deg, launch_height):
-        """Calculate trajectory points"""
+        """Calculate trajectory points using selected physics model"""
+        if self.use_magnus:
+            return self.calculate_trajectory_magnus(velocity, angle_deg, launch_height, self.spin_rate)
+        else:
+            return self.calculate_trajectory_simple(velocity, angle_deg, launch_height)
+    
+    def calculate_trajectory_simple(self, velocity, angle_deg, launch_height):
+        """Calculate trajectory using simple projectile motion (no air resistance or Magnus)"""
         angle_rad = np.radians(angle_deg)
         
         # Initial velocity components
@@ -116,6 +130,92 @@ class LauncherTrajectoryTool:
         y = y[valid]
         
         return x, y
+    
+    def calculate_trajectory_magnus(self, velocity, angle_deg, launch_height, spin_rpm):
+        """Calculate trajectory with Magnus effect and drag"""
+        angle_rad = np.radians(angle_deg)
+        
+        # Initial conditions
+        vx = velocity * np.cos(angle_rad)
+        vy = velocity * np.sin(angle_rad)
+        x = 0
+        y = launch_height
+        
+        # Convert units for calculations
+        radius = (BALL_DIAMETER / 2) / 12  # feet
+        area = np.pi * radius**2  # ft^2
+        mass = BALL_MASS  # lb
+        omega = spin_rpm * 2 * np.pi / 60  # rad/s
+        
+        # Drag coefficient (sphere, approximate)
+        Cd = 0.47
+        
+        # Magnus coefficient (empirical, depends on spin and velocity)
+        # Cl = lift coefficient due to Magnus effect
+        Cl = 0.2  # approximate for spinning sphere
+        
+        # Time step for numerical integration
+        dt = 0.001  # seconds
+        t_max = 5.0  # maximum simulation time
+        
+        # Arrays to store trajectory
+        x_array = [x]
+        y_array = [y]
+        
+        t = 0
+        while y >= 0 and t < t_max:
+            # Current speed
+            speed = np.sqrt(vx**2 + vy**2)
+            
+            if speed > 0:
+                # Drag force (opposes motion)
+                # F_drag = 0.5 * rho * Cd * A * v^2
+                drag_force = 0.5 * AIR_DENSITY * Cd * area * speed**2
+                drag_ax = -(drag_force / mass) * (vx / speed) * 386.4  # convert to in/s^2
+                drag_ay = -(drag_force / mass) * (vy / speed) * 386.4
+                
+                # Magnus force (perpendicular to velocity, in direction of spin × velocity)
+                # F_magnus = 0.5 * rho * Cl * A * v^2
+                # For backspin, this creates upward lift
+                magnus_force = 0.5 * AIR_DENSITY * Cl * area * speed**2
+                
+                # Magnus acceleration (perpendicular to velocity)
+                # Assuming backspin, Magnus force is upward (perpendicular to velocity)
+                magnus_accel = (magnus_force / mass) * 386.4  # in/s^2
+                
+                # Direction perpendicular to velocity (for backspin: rotates velocity vector 90° CCW)
+                if speed > 0:
+                    perp_x = -vy / speed
+                    perp_y = vx / speed
+                else:
+                    perp_x = 0
+                    perp_y = 0
+                
+                magnus_ax = magnus_accel * perp_x * np.sign(spin_rpm)
+                magnus_ay = magnus_accel * perp_y * np.sign(spin_rpm)
+            else:
+                drag_ax = drag_ay = 0
+                magnus_ax = magnus_ay = 0
+            
+            # Total acceleration
+            ax = drag_ax + magnus_ax
+            ay = -GRAVITY + drag_ay + magnus_ay
+            
+            # Update velocity (Euler integration)
+            vx += ax * dt
+            vy += ay * dt
+            
+            # Update position
+            x += vx * dt
+            y += vy * dt
+            
+            # Store trajectory point
+            x_array.append(x)
+            y_array.append(y)
+            
+            t += dt
+        
+        return np.array(x_array), np.array(y_array)
     
     def update_plot(self):
         """Update the trajectory plot"""
@@ -250,8 +350,35 @@ class LauncherTrajectoryTool:
         self.ax.legend(loc='upper right')
         self.fig.canvas.draw_idle()
     
+    def toggle_physics_model(self, event):
+        """Toggle between simple projectile and Magnus effect"""
+        self.use_magnus = not self.use_magnus
+        
+        # Update button appearance
+        if self.use_magnus:
+            self.physics_btn.label.set_text('Physics: Magnus Effect')
+            self.physics_btn.color = 'lightblue'
+            # Show spin slider
+            self.spin_slider.ax.set_visible(True)
+            self.spin_text.ax.set_visible(True)
+        else:
+            self.physics_btn.label.set_text('Physics: Simple Motion')
+            self.physics_btn.color = 'lightgray'
+            # Hide spin slider
+            self.spin_slider.ax.set_visible(False)
+            self.spin_text.ax.set_visible(False)
+        
+        self.update_plot()
+        self.fig.canvas.draw_idle()
+    
     def setup_widgets(self):
         """Setup interactive sliders and text boxes"""
+        # Physics model toggle button
+        ax_physics = plt.axes([0.60, 0.27, 0.20, 0.04])
+        self.physics_btn = Button(ax_physics, 'Physics: Simple Motion', 
+                                  color='lightgray', hovercolor='skyblue')
+        self.physics_btn.on_clicked(self.toggle_physics_model)
+        
         # Velocity slider
         ax_vel_slider = plt.axes([0.15, 0.25, 0.3, 0.02])
         self.vel_slider = Slider(ax_vel_slider, 'Velocity (in/s)', 50, 600, 
@@ -296,6 +423,19 @@ class LauncherTrajectoryTool:
         self.dist_text = TextBox(ax_dist_text, '', initial=str(self.distance))
         self.dist_text.on_submit(self.update_distance_text)
         
+        # Spin rate slider (initially hidden)
+        ax_spin_slider = plt.axes([0.15, 0.05, 0.3, 0.02])
+        self.spin_slider = Slider(ax_spin_slider, 'Spin Rate (RPM)', -6000, 6000, 
+                                  valinit=self.spin_rate, valstep=100)
+        self.spin_slider.on_changed(self.update_spin)
+        self.spin_slider.ax.set_visible(False)  # Hidden by default
+        
+        # Spin rate text box (initially hidden)
+        ax_spin_text = plt.axes([0.47, 0.045, 0.08, 0.03])
+        self.spin_text = TextBox(ax_spin_text, '', initial=str(self.spin_rate))
+        self.spin_text.on_submit(self.update_spin_text)
+        self.spin_text.ax.set_visible(False)  # Hidden by default
+        
         # Save button
         ax_save = plt.axes([0.15, 0.04, 0.15, 0.04])
         self.save_btn = Button(ax_save, 'Save Trajectory', color='lightgreen', hovercolor='green')
@@ -309,12 +449,14 @@ class LauncherTrajectoryTool:
         # Info text
         info_text = (
             "Instructions:\n"
+            "• Toggle physics model to enable/disable Magnus effect\n"
             "• Adjust sliders or type values to tune trajectory\n"
+            "• Spin Rate: + = backspin (lift), - = topspin (drop)\n"
             "• Click 'Save Trajectory' to keep current arc on graph\n"
             "• Click 'Clear Saved' to remove all saved trajectories\n"
             "• Green title = Hit, Red title = Miss"
         )
-        plt.figtext(0.60, 0.15, info_text, fontsize=9, 
+        plt.figtext(0.60, 0.12, info_text, fontsize=9, 
                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     
     def update_velocity(self, val):
@@ -373,6 +515,21 @@ class LauncherTrajectoryTool:
             if 50 <= val <= 400:
                 self.distance = val
                 self.dist_slider.set_val(val)
+                self.update_plot()
+        except ValueError:
+            pass
+    
+    def update_spin(self, val):
+        self.spin_rate = val
+        self.spin_text.set_val(f"{val:.0f}")
+        self.update_plot()
+    
+    def update_spin_text(self, text):
+        try:
+            val = float(text)
+            if -6000 <= val <= 6000:
+                self.spin_rate = val
+                self.spin_slider.set_val(val)
                 self.update_plot()
         except ValueError:
             pass
