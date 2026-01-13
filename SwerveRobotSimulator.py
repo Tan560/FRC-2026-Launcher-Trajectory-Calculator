@@ -11,6 +11,8 @@ FIELD_LENGTH_FEET = 54 + 3/12  # 54'3" in feet
 FIELD_WIDTH_FEET = 26 + 3/12   # 26'3" in feet
 FIELD_LENGTH_METERS = FIELD_LENGTH_FEET * 0.3048  # Convert to meters
 FIELD_WIDTH_METERS = FIELD_WIDTH_FEET * 0.3048    # Convert to meters
+TARGET_X_METERS = 4.625
+TARGET_Y_METERS = 4.025
 
 ROBOT_SIZE_INCHES = 27
 ROBOT_SIZE_METERS = ROBOT_SIZE_INCHES * 0.0254  # Convert to meters
@@ -77,8 +79,8 @@ class SwerveRobotSimulator:
         
         # Virtual goal targeting
         self.virtual_goal_active = False
-        self.real_goal_x = FIELD_LENGTH_METERS / 2  # Center of field by default
-        self.real_goal_y = FIELD_WIDTH_METERS / 2
+        self.real_goal_x = TARGET_X_METERS
+        self.real_goal_y = TARGET_Y_METERS
         self.virtual_goal_x = self.real_goal_x
         self.virtual_goal_y = self.real_goal_y
         self.locked_speed = 0.0
