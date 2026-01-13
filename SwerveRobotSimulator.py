@@ -21,7 +21,7 @@ ROBOT_SIZE_METERS = ROBOT_SIZE_INCHES * 0.0254  # Convert to meters
 # Robot frame: +X is forward, +Y is left, origin at robot center
 # Back-left corner is at (-X, +Y)
 LAUNCHER_OFFSET_X_INCHES = -(13.5 - 8)  # Back of robot: -13.5 + 8 inches = -5.5 inches (back)
-LAUNCHER_OFFSET_Y_INCHES = (13.5 - 8)   # Left side of robot: 13.5 - 8 inches = 5.5 inches (left)
+LAUNCHER_OFFSET_Y_INCHES = (0) 
 LAUNCHER_OFFSET_X_METERS = LAUNCHER_OFFSET_X_INCHES * 0.0254
 LAUNCHER_OFFSET_Y_METERS = LAUNCHER_OFFSET_Y_INCHES * 0.0254
 
@@ -361,8 +361,8 @@ class SwerveRobotSimulator:
         
         # Draw front indicator (small line showing robot's forward direction)
         front_length = half_size * 0.8
-        front_x = center_x + front_length * sin_theta
-        front_y = center_y - front_length * cos_theta  # Negative because screen Y is flipped
+        front_x = center_x + front_length * cos_theta
+        front_y = center_y - front_length * sin_theta  # Negative because screen Y is flipped
         pygame.draw.line(self.screen, YELLOW, (center_x, center_y), (front_x, front_y), 3)
         
         # Draw center point
@@ -467,7 +467,8 @@ class SwerveRobotSimulator:
     
     def draw_info(self):
         """Draw information text on screen"""
-        info_x = 10
+        # Position info on the right side of the screen
+        info_x = SCREEN_WIDTH - 300
         info_y = 10
         line_height = 25
         
