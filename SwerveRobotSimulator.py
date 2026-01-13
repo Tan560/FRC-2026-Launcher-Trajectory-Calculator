@@ -17,6 +17,14 @@ TARGET_Y_METERS = 4.025
 ROBOT_SIZE_INCHES = 27
 ROBOT_SIZE_METERS = ROBOT_SIZE_INCHES * 0.0254  # Convert to meters
 
+# Launcher position (in robot coordinates - back corner, 8 inches from each side)
+# Robot frame: +X is forward, +Y is left, origin at robot center
+# Back-left corner is at (-X, +Y)
+LAUNCHER_OFFSET_X_INCHES = -(13.5 - 8)  # Back of robot: -13.5 + 8 inches = -5.5 inches (back)
+LAUNCHER_OFFSET_Y_INCHES = (13.5 - 8)   # Left side of robot: 13.5 - 8 inches = 5.5 inches (left)
+LAUNCHER_OFFSET_X_METERS = LAUNCHER_OFFSET_X_INCHES * 0.0254
+LAUNCHER_OFFSET_Y_METERS = LAUNCHER_OFFSET_Y_INCHES * 0.0254
+
 MAX_SPEED = 5.0  # m/s
 ACCELERATION = 5.0  # m/s^2
 DECELERATION_MULTIPLIER = 2.0  # Deceleration is this times faster than acceleration
@@ -50,9 +58,9 @@ class RobotState:
     """Robot state class to track pose and velocity"""
     x: float = FIELD_LENGTH_METERS / 2  # meters (center of field)
     y: float = FIELD_WIDTH_METERS / 2   # meters (center of field)
-    theta: float = 0.0  # radians (rotation, 0 is pointing up/forward)
-    vx: float = 0.0  # m/s (velocity in field frame - forward/X direction)
-    vy: float = 0.0  # m/s (velocity in field frame - left/Y direction)
+    theta: float = 0.0  # radians (rotation, 0 is pointing right(+X), pi/2 is pointing up(+Y))
+    vx: float = 0.0  # m/s (velocity in field frame - X direction (horizontal, right is positive))
+    vy: float = 0.0  # m/s (velocity in field frame - Y direction (vertical, up is positive))
     omega: float = 0.0  # rad/s (angular velocity)
 
 
@@ -226,6 +234,95 @@ class SwerveRobotSimulator:
         self.virtual_goal_x = self.real_goal_x - self.robot.vx * VIRTUAL_GOAL_LOOKAHEAD_TIME
         self.virtual_goal_y = self.real_goal_y - self.robot.vy * VIRTUAL_GOAL_LOOKAHEAD_TIME
     
+    def get_launcher_world_position(self):
+        """Calculate the launcher's position in world coordinates (field frame)"""
+        # Launcher position in robot frame
+        launcher_x_robot = LAUNCHER_OFFSET_X_METERS
+        launcher_y_robot = LAUNCHER_OFFSET_Y_METERS
+        
+        # Rotate launcher position by robot's rotation to get world position
+        cos_theta = math.cos(self.robot.theta)
+        sin_theta = math.sin(self.robot.theta)
+        
+        # Rotation transformation (robot frame to world frame)
+        launcher_x_world = self.robot.x + (launcher_x_robot * cos_theta - launcher_y_robot * sin_theta)
+        launcher_y_world = self.robot.y + (launcher_x_robot * sin_theta + launcher_y_robot * cos_theta)
+        
+        return launcher_x_world, launcher_y_world
+    
+    def calculate_launcher_to_target_distance(self, use_virtual=None):
+        """Calculate distance from launcher to target in meters
+        
+        Args:
+            use_virtual: If None, uses self.virtual_goal_active. Otherwise, override with boolean.
+        
+        Returns:
+            float: Distance in meters
+        """
+        # Get launcher world position
+        launcher_x, launcher_y = self.get_launcher_world_position()
+        
+        # Determine target
+        if use_virtual is None:
+            use_virtual = self.virtual_goal_active
+            
+        if use_virtual:
+            target_x, target_y = self.virtual_goal_x, self.virtual_goal_y
+        else:
+            target_x, target_y = self.real_goal_x, self.real_goal_y
+        
+        # Calculate distance
+        dx = target_x - launcher_x
+        dy = target_y - launcher_y
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        return distance
+    
+    def calculate_launcher_to_target_angle(self, use_virtual=None):
+        """Calculate angle from launcher to target in robot coordinate system
+        
+        Robot coordinate system: 0 degrees points forward (in direction of robot's front)
+        Positive angles are counter-clockwise
+        
+        Args:
+            use_virtual: If None, uses self.virtual_goal_active. Otherwise, override with boolean.
+        
+        Returns:
+            float: Angle in degrees (0° = forward, 90° = left, -90° = right, 180° = backward)
+        """
+        # Get launcher world position
+        launcher_x, launcher_y = self.get_launcher_world_position()
+        
+        # Determine target
+        if use_virtual is None:
+            use_virtual = self.virtual_goal_active
+            
+        if use_virtual:
+            target_x, target_y = self.virtual_goal_x, self.virtual_goal_y
+        else:
+            target_x, target_y = self.real_goal_x, self.real_goal_y
+        
+        # Calculate vector from launcher to target in world frame
+        dx_world = target_x - launcher_x
+        dy_world = target_y - launcher_y
+        
+        # Calculate angle in world frame using standard atan2(y, x)
+        # This gives angle from +X axis (pointing right on field)
+        # In our field: +X is right, +Y is up
+        angle_world = math.atan2(dy_world, dx_world)
+        
+        # Convert to robot frame by subtracting robot's rotation
+        # Robot theta is measured from +X axis as well
+        angle_robot = angle_world - self.robot.theta
+        
+        # Normalize angle to [-pi, pi]
+        angle_robot = math.atan2(math.sin(angle_robot), math.cos(angle_robot))
+        
+        # Convert to degrees
+        angle_degrees = math.degrees(angle_robot)
+        
+        return angle_degrees
+    
     def draw_robot(self):
         """Draw the robot on the screen"""
         center_x, center_y = self.world_to_screen(self.robot.x, self.robot.y)
@@ -255,6 +352,12 @@ class SwerveRobotSimulator:
         # Draw robot body
         pygame.draw.polygon(self.screen, BLUE, rotated_points, 0)
         pygame.draw.polygon(self.screen, WHITE, rotated_points, 2)
+        
+        # Draw launcher position (small circle in back corner)
+        launcher_world_x, launcher_world_y = self.get_launcher_world_position()
+        launcher_screen_x, launcher_screen_y = self.world_to_screen(launcher_world_x, launcher_world_y)
+        pygame.draw.circle(self.screen, ORANGE, (launcher_screen_x, launcher_screen_y), 6)
+        pygame.draw.circle(self.screen, BLACK, (launcher_screen_x, launcher_screen_y), 6, 2)
         
         # Draw front indicator (small line showing robot's forward direction)
         front_length = half_size * 0.8
@@ -332,8 +435,9 @@ class SwerveRobotSimulator:
             pygame.draw.line(self.screen, CYAN, real_goal_screen, virtual_goal_screen, 2)
     
     def draw_aim_line(self):
-        """Draw aim line from robot to the target goal"""
-        robot_screen = self.world_to_screen(self.robot.x, self.robot.y)
+        """Draw aim line from launcher to the target goal"""
+        launcher_world_x, launcher_world_y = self.get_launcher_world_position()
+        launcher_screen = self.world_to_screen(launcher_world_x, launcher_world_y)
         
         # Determine which goal to aim at
         if self.virtual_goal_active:
@@ -345,9 +449,9 @@ class SwerveRobotSimulator:
         
         target_screen = self.world_to_screen(target_x, target_y)
         
-        # Draw dashed line from robot to target
-        dx = target_screen[0] - robot_screen[0]
-        dy = target_screen[1] - robot_screen[1]
+        # Draw dashed line from launcher to target
+        dx = target_screen[0] - launcher_screen[0]
+        dy = target_screen[1] - launcher_screen[1]
         distance = math.sqrt(dx**2 + dy**2)
         
         if distance > 0:
@@ -355,10 +459,10 @@ class SwerveRobotSimulator:
             for i in range(num_dashes):
                 start_ratio = i / num_dashes
                 end_ratio = (i + 0.5) / num_dashes
-                start_x = robot_screen[0] + dx * start_ratio
-                start_y = robot_screen[1] + dy * start_ratio
-                end_x = robot_screen[0] + dx * end_ratio
-                end_y = robot_screen[1] + dy * end_ratio
+                start_x = launcher_screen[0] + dx * start_ratio
+                start_y = launcher_screen[1] + dy * start_ratio
+                end_x = launcher_screen[0] + dx * end_ratio
+                end_y = launcher_screen[1] + dy * end_ratio
                 pygame.draw.line(self.screen, line_color, (start_x, start_y), (end_x, end_y), 2)
     
     def draw_info(self):
@@ -366,6 +470,11 @@ class SwerveRobotSimulator:
         info_x = 10
         info_y = 10
         line_height = 25
+        
+        # Calculate launcher targeting info
+        distance_to_target = self.calculate_launcher_to_target_distance()
+        angle_to_target = self.calculate_launcher_to_target_angle()
+        distance_inches = distance_to_target * 39.3701  # Convert meters to inches
         
         # Robot state information
         texts = [
@@ -376,18 +485,29 @@ class SwerveRobotSimulator:
             f"Angular Velocity: {math.degrees(self.robot.omega):.1f}°/s",
             f"Speed: {math.sqrt(self.robot.vx**2 + self.robot.vy**2):.2f} m/s",
             f"Drive Mode: Field-Centric",
+            "",
+            f"LAUNCHER INFO:",
+            f"Distance to Target: {distance_to_target:.2f}m ({distance_inches:.1f}in)",
+            f"Angle to Target: {angle_to_target:.1f}° (robot frame)",
         ]
         
         # Add virtual goal status
         if self.virtual_goal_active:
             max_allowed = MAX_SPEED * VIRTUAL_GOAL_SPEED_LIMIT
+            texts.append("")
             texts.append(f"VIRTUAL GOAL ACTIVE (Max Speed: {max_allowed:.2f} m/s)")
             texts.append(f"Virtual Goal: ({self.virtual_goal_x:.2f}m, {self.virtual_goal_y:.2f}m)")
         
+        texts.append("")
         texts.append(f"Real Goal: ({self.real_goal_x:.2f}m, {self.real_goal_y:.2f}m)")
         
         for i, text in enumerate(texts):
-            color = PURPLE if self.virtual_goal_active and i == 7 else WHITE
+            if "VIRTUAL GOAL ACTIVE" in text:
+                color = PURPLE
+            elif "LAUNCHER INFO" in text:
+                color = ORANGE
+            else:
+                color = WHITE
             surface = self.font.render(text, True, color)
             self.screen.blit(surface, (info_x, info_y + i * line_height))
         
