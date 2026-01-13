@@ -360,13 +360,11 @@ class LauncherTrajectoryTool:
             self.physics_btn.color = 'lightblue'
             # Show spin slider
             self.spin_slider.ax.set_visible(True)
-            self.spin_text.ax.set_visible(True)
         else:
             self.physics_btn.label.set_text('Physics: Simple Motion')
             self.physics_btn.color = 'lightgray'
             # Hide spin slider
             self.spin_slider.ax.set_visible(False)
-            self.spin_text.ax.set_visible(False)
         
         self.update_plot()
         self.fig.canvas.draw_idle()
@@ -385,43 +383,23 @@ class LauncherTrajectoryTool:
                                  valinit=self.velocity, valstep=5)
         self.vel_slider.on_changed(self.update_velocity)
         
-        # Velocity text box
-        ax_vel_text = plt.axes([0.47, 0.245, 0.08, 0.03])
-        self.vel_text = TextBox(ax_vel_text, '', initial=str(self.velocity))
-        self.vel_text.on_submit(self.update_velocity_text)
-        
         # Angle slider
         ax_angle_slider = plt.axes([0.15, 0.20, 0.3, 0.02])
         self.angle_slider = Slider(ax_angle_slider, 'Angle (deg)', 0, 90, 
                                    valinit=self.angle, valstep=0.5)
         self.angle_slider.on_changed(self.update_angle)
         
-        # Angle text box
-        ax_angle_text = plt.axes([0.47, 0.195, 0.08, 0.03])
-        self.angle_text = TextBox(ax_angle_text, '', initial=str(self.angle))
-        self.angle_text.on_submit(self.update_angle_text)
-        
         # Launch height slider
         ax_height_slider = plt.axes([0.15, 0.15, 0.3, 0.02])
         self.height_slider = Slider(ax_height_slider, 'Launch Height (in)', 0, 80, 
                                     valinit=self.launch_height, valstep=1)
         self.height_slider.on_changed(self.update_height)
-        
-        # Launch height text box
-        ax_height_text = plt.axes([0.47, 0.145, 0.08, 0.03])
-        self.height_text = TextBox(ax_height_text, '', initial=str(self.launch_height))
-        self.height_text.on_submit(self.update_height_text)
-        
+
         # Distance slider
         ax_dist_slider = plt.axes([0.15, 0.10, 0.3, 0.02])
         self.dist_slider = Slider(ax_dist_slider, 'Distance to Hub (in)', 20, 250, 
                                   valinit=self.distance, valstep=5)
         self.dist_slider.on_changed(self.update_distance)
-        
-        # Distance text box
-        ax_dist_text = plt.axes([0.47, 0.095, 0.08, 0.03])
-        self.dist_text = TextBox(ax_dist_text, '', initial=str(self.distance))
-        self.dist_text.on_submit(self.update_distance_text)
         
         # Spin rate slider (initially hidden)
         ax_spin_slider = plt.axes([0.15, 0.05, 0.3, 0.02])
@@ -430,19 +408,13 @@ class LauncherTrajectoryTool:
         self.spin_slider.on_changed(self.update_spin)
         self.spin_slider.ax.set_visible(False)  # Hidden by default
         
-        # Spin rate text box (initially hidden)
-        ax_spin_text = plt.axes([0.47, 0.045, 0.08, 0.03])
-        self.spin_text = TextBox(ax_spin_text, '', initial=str(self.spin_rate))
-        self.spin_text.on_submit(self.update_spin_text)
-        self.spin_text.ax.set_visible(False)  # Hidden by default
-        
-        # Save button
-        ax_save = plt.axes([0.15, 0.04, 0.15, 0.04])
+        # Save button (moved to the right to avoid blocking by spin slider)
+        ax_save = plt.axes([0.60, 0.04, 0.15, 0.04])
         self.save_btn = Button(ax_save, 'Save Trajectory', color='lightgreen', hovercolor='green')
         self.save_btn.on_clicked(self.save_trajectory)
         
-        # Clear button
-        ax_clear = plt.axes([0.32, 0.04, 0.15, 0.04])
+        # Clear button (moved to the right to avoid blocking by spin slider)
+        ax_clear = plt.axes([0.77, 0.04, 0.15, 0.04])
         self.clear_btn = Button(ax_clear, 'Clear Saved', color='lightcoral', hovercolor='red')
         self.clear_btn.on_clicked(self.clear_saved)
         
@@ -464,75 +436,25 @@ class LauncherTrajectoryTool:
         self.vel_text.set_val(f"{val:.0f}")
         self.update_plot()
     
-    def update_velocity_text(self, text):
-        try:
-            val = float(text)
-            if 50 <= val <= 600:
-                self.velocity = val
-                self.vel_slider.set_val(val)
-                self.update_plot()
-        except ValueError:
-            pass
-    
     def update_angle(self, val):
         self.angle = val
         self.angle_text.set_val(f"{val:.1f}")
         self.update_plot()
-    
-    def update_angle_text(self, text):
-        try:
-            val = float(text)
-            if 0 <= val <= 90:
-                self.angle = val
-                self.angle_slider.set_val(val)
-                self.update_plot()
-        except ValueError:
-            pass
     
     def update_height(self, val):
         self.launch_height = val
         self.height_text.set_val(f"{val:.0f}")
         self.update_plot()
     
-    def update_height_text(self, text):
-        try:
-            val = float(text)
-            if 0 <= val <= 80:
-                self.launch_height = val
-                self.height_slider.set_val(val)
-                self.update_plot()
-        except ValueError:
-            pass
-    
     def update_distance(self, val):
         self.distance = val
         self.dist_text.set_val(f"{val:.0f}")
         self.update_plot()
     
-    def update_distance_text(self, text):
-        try:
-            val = float(text)
-            if 50 <= val <= 400:
-                self.distance = val
-                self.dist_slider.set_val(val)
-                self.update_plot()
-        except ValueError:
-            pass
-    
     def update_spin(self, val):
         self.spin_rate = val
-        self.spin_text.set_val(f"{val:.0f}")
         self.update_plot()
     
-    def update_spin_text(self, text):
-        try:
-            val = float(text)
-            if -6000 <= val <= 6000:
-                self.spin_rate = val
-                self.spin_slider.set_val(val)
-                self.update_plot()
-        except ValueError:
-            pass
 
 if __name__ == "__main__":
     print("Starting FRC 2026 Launcher Trajectory Tool...")
